@@ -12,7 +12,7 @@
 # 缺点
 + 不支持 centos
 + 不支持流量统计
-+ 成为一个保姆级脚本并不是本项目的目标。请自行处理中转机上的 iptables 和 firewall 规则
++ 成为一个保姆级脚本并不是本项目的目标。请自行处理中转机上的 iptables / firewall / ufw 规则
 
 # 使用
 ## 安装
@@ -20,7 +20,8 @@
 wget "https://cdn.jsdelivr.net/gh/qinghuas/brook-relay@main/relay.sh"
 bash relay.sh start
 ```
-安装后，执行 `relay` 与执行 `bash relay.sh` 等价
++ 安装后，执行 `relay` 与执行 `bash relay.sh` 等价
++ 考虑到该脚本往往运行在位于中国大陆的服务器上，从 github 获取文件的链接均使用了可靠的镜像站点
 ## 服务管理
 
 #### 启动
@@ -39,7 +40,7 @@ relay restart
 ```
 relay update
 ```
-
+与 github 上的版本同步
 ## 使用教程
 
 ### 智能处理
