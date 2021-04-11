@@ -17,6 +17,7 @@
 # 使用
 ## 安装
 ```
+wget "https://cdn.jsdelivr.net/gh/qinghuas/brook-relay@main/relay.sh"
 bash relay.sh start
 ```
 安装后，执行 `relay` 与执行 `bash relay.sh` 等价
