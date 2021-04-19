@@ -61,6 +61,14 @@ command()
 		echo 'bash /root/relay.sh $1 $2' >> /usr/bin/relay
 		chmod 755 /usr/bin/relay
 	fi
+	if [[ ! -e "/usr/bin/vim" ]];then
+		apt-get -y install vim
+		# Fix xshell cannot copy and paste in vim
+		if [[ ! -e "/root/.vimrc" ]];then
+			echo 'set mouse=c' > /root/.vimrc
+			echo 'syntax on' >> /root/.vimrc
+		fi
+	fi
 	# crontab
 	crontab -l | grep "relay.sh" > /dev/null
 	if [[ "$?" != "0" ]];then
