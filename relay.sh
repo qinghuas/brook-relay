@@ -61,14 +61,6 @@ command()
 		echo 'bash /root/relay.sh $1 $2' >> /usr/bin/relay
 		chmod 755 /usr/bin/relay
 	fi
-	if [[ ! -e "/usr/bin/vim" ]];then
-		apt-get -y install vim
-		# Fix xshell cannot copy and paste in vim
-		if [[ ! -e "/root/.vimrc" ]];then
-			echo 'set mouse=c' > /root/.vimrc
-			echo 'syntax on' >> /root/.vimrc
-		fi
-	fi
 	# crontab
 	crontab -l | grep "relay.sh" > /dev/null
 	if [[ "$?" != "0" ]];then
@@ -77,6 +69,20 @@ command()
 		crontab /root/crontab.now
 		rm -rf /root/crontab.now
 	fi
+}
+
+checkRun()
+{
+	checkitem="$0"
+
+	let procCnt=$(ps -A --format='%p%P%C%x%a' --width 2048 -w --sort pid | grep "$checkitem" | grep -v grep | grep -v " -c sh " | grep -v "$$" | grep -c sh | awk '{printf("%d",$1)}')
+
+	if [[ "${procCnt}" -gt "0" ]];then
+		echo -e "$(red) There is already a script being executed, exit."
+		exit
+	fi
+
+	# The source code comes from http://www.gimoo.net/t/1502/54e7fd9a97ae5.html
 }
 
 checkConfig()
@@ -372,19 +378,24 @@ del()
 edit()
 {
 	vim ${conf}
+	bash /root/relay.sh auto
 }
 
 help()
 {
 	echo 'bash relay.sh {start|stop|restart} - Service management'
 	echo 'bash relay.sh delay $time - Set creation delay'
-	echo;echo 'version -> 1.2.2'
-	echo 'release date -> 2021-04-11'
+	echo;echo 'version -> 1.2.5'
+	echo 'release date -> 2021-09-15'
 }
 
 # 1.2.1 配置文件存在复用同一端口的情况时给出提示
 # 1.2.2 开源项目
+# 1.2.3 编辑配置文件后自动检测变动
+# 1.2.4 私人配置
+# 1.2.5 增加运行检测用于避免重复执行
 
+checkRun
 command
 parameter_1=$1
 parameter_2=$2
