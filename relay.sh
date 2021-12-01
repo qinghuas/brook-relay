@@ -52,6 +52,9 @@ command()
 	if [[ ! -e "/usr/bin/nload" ]];then
 		apt-get -y install nload
 	fi
+	if [[ ! -e "/usr/bin/column" ]];then
+		apt-get -y install bsdmainutils
+	fi
 	if [[ ! -e "/usr/bin/brook" ]];then
 		wget -O /usr/bin/brook "$brook_download_url"
 		chmod 755 /usr/bin/brook
@@ -69,20 +72,6 @@ command()
 		crontab /root/crontab.now
 		rm -rf /root/crontab.now
 	fi
-}
-
-checkRun()
-{
-	checkitem="$0"
-
-	let procCnt=$(ps -A --format='%p%P%C%x%a' --width 2048 -w --sort pid | grep "$checkitem" | grep -v grep | grep -v " -c sh " | grep -v "$$" | grep -c sh | awk '{printf("%d",$1)}')
-
-	if [[ "${procCnt}" -gt "0" ]];then
-		echo -e "$(red) There is already a script being executed, exit."
-		exit
-	fi
-
-	# The source code comes from http://www.gimoo.net/t/1502/54e7fd9a97ae5.html
 }
 
 checkConfig()
@@ -142,11 +131,17 @@ submitTask()
 {
 	screen_name="relay_${local_port}"
 	echo "$(date +%s) relay_${local_port} $remote_host $remote_target $remote_port" >> /root/.relay.log
-	if [[ "$delay" = "0" ]];then
+	
+	screen -ls | grep $screen_name > /dev/null
+	is_exist=$?
+	
+	if [[ "$delay" = "0" ]] && [[ "$is_exist" != "0" ]];then
 		screen -dmS "${screen_name}"
 		screen -x -S "${screen_name}" -p 0 -X stuff "brook relay -f :${local_port} -t ${remote_target}:${remote_port}"
 		screen -x -S "${screen_name}" -p 0 -X stuff $'\n'
-	else
+	fi
+	
+	if [[ "$delay" != "0" ]] && [[ "$is_exist" != "0" ]];then
 		screen -dmS "${screen_name}"
 		sleep $delay
 		screen -x -S "${screen_name}" -p 0 -X stuff "brook relay -f :${local_port} -t ${remote_target}:${remote_port}"
@@ -201,7 +196,9 @@ stopTask()
 
 getStatus()
 {
+	relay_task_num=$(screen -ls | grep "relay_" | wc -l)
 	screen -ls | grep "relay_"
+	echo -e "$(green) Total running transit tasks: ${relay_task_num}"
 }
 
 setDelay()
@@ -295,6 +292,7 @@ intelligent()
 	if [[ "$parameter_2" = "new" ]];then
 		new
 	else
+		# auto check
 		remove
 		new
 		change
@@ -329,6 +327,7 @@ uninstall()
 		relay stop
 		rm -rf /usr/bin/relay /usr/bin/brook /root/relay.sh /root/.relay.log
 		echo -e "$(green) All related files have been removed. Please remove the cron task manually."
+		echo -e "$(green) If necessary, delete the file /root/relay.conf manually."
 	fi
 }
 
@@ -354,7 +353,7 @@ add()
 		echo "${local_port} ${remote_host} ${remote_port} ${enable_switch}" >> ${conf}
 		echo "$(green) Added successfully, wait for restart to take effect..."
 		sleep 1
-		relay auto
+		bash /root/relay.sh auto
 	else
 		echo "$(red) The necessary parameters are missing."
 	fi
@@ -385,8 +384,8 @@ help()
 {
 	echo 'bash relay.sh {start|stop|restart} - Service management'
 	echo 'bash relay.sh delay $time - Set creation delay'
-	echo;echo 'version -> 1.2.5'
-	echo 'release date -> 2021-09-15'
+	echo;echo 'version -> 1.2.6'
+	echo 'release date -> 2021-12-01'
 }
 
 # 1.2.1 配置文件存在复用同一端口的情况时给出提示
@@ -394,8 +393,8 @@ help()
 # 1.2.3 编辑配置文件后自动检测变动
 # 1.2.4 私人配置
 # 1.2.5 增加运行检测用于避免重复执行
+# 1.2.6 移除运行检测，改为在创建screen任务时检测
 
-checkRun
 command
 parameter_1=$1
 parameter_2=$2
