@@ -76,19 +76,19 @@ command()
 
 checkConfig()
 {
-	if [[ -e "$conf" ]];then
-		line=$(wc -l ${conf} | awk '{print $1}')
-		
-		for (( i=1; i <= $line; i++ ))
-		do
-			getConfig
-			if [[ $(cat ${conf} | grep $local_port | wc -l) -gt "1" ]];then
-				echo -e "$(red) The configuration file has the problem of occupying the same port."
-				echo -e "$(red) Related ports: ${local_port}"
-				exit
-			fi
-		done
-	fi
+    if [[ -e "$conf" ]];then
+        line=$(wc -l ${conf} | awk '{print $1}')
+        
+        for (( i=1; i <= $line; i++ ))
+        do
+            getConfig
+            if [[ $(cat ${conf} | awk '{print $1}' | grep $local_port | wc -l) -gt "1" ]];then
+                echo -e "$(red) The configuration file has the problem of occupying the same port."
+                echo -e "$(red) Related ports: ${local_port}"
+                exit
+            fi
+        done
+    fi
 }
 
 checkStart()
@@ -361,17 +361,16 @@ add()
 
 del()
 {
-	bash /root/relay.sh list
-	echo;read -p "$(blue) Please enter the local port of the transfer rule to be deleted:" remove_local_port
-	line=$(cat -n ${conf} | awk '{print $1,$2}' | grep $remove_local_port | awk '{print $1}')
-	if [[ "$line" = "" ]];then
-		echo -e "$(red) There is no corresponding rule."
-		exit
-	else
-		echo -e "$(green) The rule has been removed and the service is being processed..."
-		sed -i "${line}d" ${conf}
-		bash /root/relay.sh auto
-	fi
+    cat -n $conf | column -s ' ' -t
+    echo;read -p "$(blue) Please enter the realy rule number:" line_number
+    if [[ "$line_number" = "" ]];then
+        echo -e "$(red) Input can not be empty."
+        exit
+    else
+        echo -e "$(green) The rule has been removed and the service is being processed..."
+        sed -i "${line}d" ${conf}
+        bash /root/relay.sh auto
+    fi
 }
 
 edit()
