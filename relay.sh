@@ -6,6 +6,7 @@ delay='0'
 
 green_color='\033[32m'
 yellow_color='\033[33m'
+red_color='\033[31m'
 color_end='\033[0m'
 
 green()
@@ -31,12 +32,14 @@ blue()
 public()
 {
     brook_download_url='https://github.com.cnpmjs.org/txthinking/brook/releases/download/v20210701/brook_linux_amd64'
+    gost_download_url='https://github.com/ginuerzh/gost/releases/download/v2.11.1/gost-linux-amd64-2.11.1.gz'
     update_source='https://cdn.jsdelivr.net/gh/qinghuas/brook-relay@main/relay.sh'
 }
 
 private()
 {
     brook_download_url=''
+    gost_download_url=''
     update_source=''
 }
 
@@ -60,12 +63,25 @@ command()
     if [[ ! -e "/usr/bin/column" ]];then
         apt-get -y install bsdmainutils
     fi
+    if [[ ! -e "/usr/bin/lsof" ]];then
+        apt-get -y install lsof
+    fi
     if [[ ! -e "/usr/bin/socat" ]];then
         apt-get -y install socat
     fi
     if [[ ! -e "/usr/bin/brook" ]];then
-        wget -O /usr/bin/brook ${brook_download_url}
+        echo -e "$(green) Downloading brook file..."
+        wget -O /usr/bin/brook -q --show-progress ${brook_download_url}
         chmod 755 /usr/bin/brook
+    fi
+    if [[ ! -e "/usr/bin/gost" ]];then
+        cd /root
+        echo -e "$(green) Downloading gost file..."
+        wget -q --show-progress ${gost_download_url}
+        gunzip /root/gost-linux-amd64-2.11.1.gz
+        cp /root/gost-linux-amd64-2.11.1 /usr/bin/gost
+        chmod 755 /usr/bin/gost
+        rm -rf /root/gost-linux-amd64-2.11.1*
     fi
     if [[ ! -e "/usr/bin/relay" ]];then
         echo "#!/bin/bash" > /usr/bin/relay
@@ -84,23 +100,6 @@ command()
 
 checkConfig()
 {
-    if [[ -e ${conf} ]];then
-        line=$(wc -l ${conf} | awk '{print $1}')
-
-        for (( i=1; i <= ${line}; i++ ))
-        do
-            getConfig
-            if [[ $(cat ${conf} | awk '{print $1}' | grep -w ${local_port} | wc -l) -gt "1" ]];then
-                echo -e "$(red) The configuration file exists on the same port."
-                echo -e "$(red) Related ports: ${local_port}"
-                exit
-            fi
-        done
-    fi
-}
-
-checkStart()
-{
     if [[ ! -e ${conf} ]];then
         echo -e "$(red) The configuration file was not found. Execute [relay add] to add rule."
         exit
@@ -111,7 +110,20 @@ checkStart()
         echo -e "$(red) There is no valid forwarding rule, execute [relay add] to add rule."
         exit
     fi
+    
+    for (( i=1; i <= ${file_line}; i++ ))
+    do
+        getConfig
+        if [[ $(cat ${conf} | awk '{print $1}' | grep -w ${local_port} | wc -l) -gt "1" ]];then
+            echo -e "$(red) The configuration file exists on the same port."
+            echo -e "$(red) Related ports: ${local_port}"
+            exit
+        fi
+    done
+}
 
+checkStart()
+{
     screen -ls | grep "relay_" > /dev/null
     if [[ $? == "0" ]];then
         echo "$(yellow) There is a forwarding running. Execute [relay stop] to stop them, or [relay restart] to rerun."
@@ -157,9 +169,7 @@ submitTask()
     echo "$(date +%s) relay_${local_port} ${remote_host} ${remote_target} ${remote_port}" >> /root/.relay.log
 
     screen -ls | grep ${screen_name} > /dev/null
-    is_exist=$?
-
-    if [[ ${is_exist} != "0" ]];then
+    if [[ $? != "0" ]];then
         # create screen
         screen -dmS ${screen_name}
         sleep ${delay}
@@ -170,6 +180,9 @@ submitTask()
         sleep ${delay}
         if [[ ${method} == 'socat' ]];then
             screen -x -S ${screen_name} -p 0 -X stuff "socat -d TCP4-LISTEN:${local_port},reuseaddr,fork TCP4:${remote_target}:${remote_port}"
+        fi
+        if [[ ${method} == 'gost' ]];then
+            screen -x -S ${screen_name} -p 0 -X stuff "gost -L=tcp://:${local_port}/${remote_target}:${remote_port}"
         fi
         # excute command
         sleep ${delay}
@@ -238,7 +251,7 @@ intelligent()
 {
     createCache()
     {
-        echo -e "$(green) Creating relay rule domain name resolution cache..."
+        echo -e "$(green) Create a domain name resolution cache..."
         rm -rf /root/.relay.nslookup.cache
 
         counter='0'
@@ -270,7 +283,14 @@ intelligent()
                 if [[ ${screen_id} != "" ]];then
                     counter=$(expr ${counter} + 1)
                     screen -S ${screen_id} -X quit
+
+                    history=$(tac /root/.relay.log | grep -m 1 relay_${screen_port})
+                    history_host=$(echo ${history} | awk '{print $3}')
+                    history_target=$(echo ${history} | awk '{print $4}')
+                    history_port=$(echo ${history} | awk '{print $5}')
+
                     echo -e "$(red) Terminate forwarding task -> relay_${screen_port}"
+                    echo -e "$(date "+%Y-%m-%d %H:%M:%S") ${yellow_color}<remove>${color_end} [${history_host}]" >> /root/.relay.change.log
                 fi
             fi
         done
@@ -299,6 +319,8 @@ intelligent()
                     counter=$(expr ${counter} + 1)
                     submitTask
                     echo -e "$(green) New task has been created -> relay_${local_port}"
+                    content="[${remote_host}] ${remote_target}:${remote_port}"
+                    echo -e "$(date "+%Y-%m-%d %H:%M:%S") ${green_color}<create>${color_end} ${content}" >> /root/.relay.change.log
                 fi
             fi
         done
@@ -323,33 +345,35 @@ intelligent()
             if [[ ${remote_target} != ${history_target} ]] || [[ ${remote_port} != ${history_port} ]] && [[ ${enable_switch} == "1" ]];
             then
                 if [[ ${remote_target} != "" ]] && [[ ${history_target} != "" ]] && [[ ${history_port} != "" ]];then
+                    # count
                     counter=$(expr ${counter} + 1)
+                    # quit task
                     screen_id=$(screen -ls | grep "relay_${local_port}" | awk -F '.' '{print $1}' | tr "." "\n")
                     screen -S ${screen_id} -X quit
-
+                    sleep ${delay}
+                    # rebuild task
+                    submitTask
+                    sleep ${delay}
+                    # record and note
                     content="[${remote_host}] ${history_target}:${history_port} -> ${remote_target}:${remote_port}"
-                    echo -e "$(yellow) ${content}"
+                    echo -e "$(date "+%Y-%m-%d %H:%M:%S") ${red_color}<change>${color_end} ${content}" >> /root/.relay.change.log
                     #echo -e "$(yellow) relay_${local_port} has been terminated, waiting to be recreated."
-                    echo "$(date "+%Y-%m-%d %H:%M:%S") ${content}" >> /root/.relay.terminate.log
+                    echo -e "$(yellow) ${content}"
                 fi
             fi
         done
 
-        if [[ ${counter} != "0" ]];then
-            bash /root/relay.sh auto new
-        else
+        if [[ ${counter} == "0" ]];then
+            #bash /root/relay.sh auto new
+        #else
             echo -e "$(green) Great! No tasks need to be changed."
         fi
     }
 
-    if [[ ${parameter_2} == "new" ]];then
-        new
-    else
-        createCache
-        remove
-        new
-        change
-    fi
+    createCache
+    remove
+    new
+    change
 }
 
 update()
@@ -381,7 +405,7 @@ uninstall()
     if [[ ${reply} == "y" ]];then
         relay stop
         rm -rf /usr/bin/relay /usr/bin/brook /root/relay.sh
-        rm -rf /root/.relay.log /root/.relay.nslookup.cache /root/.relay.terminate.log
+        rm -rf /root/.relay.log /root/.relay.nslookup.cache /root/.relay.change.log
         echo -e "$(green) All related files have been removed. Please remove the cron task manually."
         echo -e "$(green) If necessary, delete the file /root/relay.conf manually."
     fi
@@ -440,31 +464,32 @@ search_config()
 
     relay list | grep ${port}
     relay status | grep ${port}
+    lsof -i:${port}
 }
 
 help()
 {
-    echo -e "${green_color}"
+    echo -ne "${green_color}"
     echo -e "bash relay.sh {start|stop|restart} - service management"
     echo -e "bash relay.sh delay <time> - set create delay"
-    echo -e "${color_end}"
+    echo -ne "${color_end}"
     echo
-    echo -e "${yellow_color}"
-    echo -e "version -> 1.2.11"
-    echo -e "release date -> 2022-02-24"
-    echo -e "${color_end}"
+    echo -ne "${yellow_color}"
+    echo -e "Version -> 1.2.11"
+    echo -e "Release date -> 2022-02-25"
+    echo -ne "${color_end}"
 }
 
 switchMethod()
 {
     echo -e "$(green) The method you are using is: ${yellow_color}${method}${color_end}"
     echo -e "$(green) Which of the following do you want to use:"
-    read -p "$(blue) [1]brook [2]realm [3]socat:" reply
+    read -p "$(blue) [1]brook [2]gost [3]socat:" reply
     if [[ ${reply} == '' ]];then
         echo -e "$(red) The selection cannot be empty, please enter the method name."
         exit
     fi
-    if [[ ${reply} != 'brook' ]] && [[ ${reply} != 'socat' ]];then
+    if [[ ${reply} != 'brook' ]] && [[ ${reply} != 'gost' ]] && [[ ${reply} != 'socat' ]];then
         echo -e "$(red) Please enter the choice given."
         exit
     fi
@@ -480,7 +505,11 @@ switchMethod()
 
 view_log()
 {
-    tail -n 15 /root/.relay.terminate.log
+    if [[ -e "/root/.relay.change.log" ]];then
+        tail -n 15 /root/.relay.change.log
+    else
+        echo -e "$(yellow) No terminate log yet."
+    fi
 }
 
 # 1.2.1 配置文件存在复用同一端口的情况时给出提示
@@ -493,7 +522,7 @@ view_log()
 # 1.2.8 (2022-02-13) 增加解析缓存功能
 # 1.2.9 (2022-02-15) 修复可能频繁存在的错误终止问题
 # 1.2.10 (2022-02-17) 增加socat中转方式
-# 1.2.11 (2022-02-24) 优化结构
+# 1.2.11 (2022-02-25) 优化整体结构和代码并增加gost中转方式
 
 command
 parameter_1=$1
