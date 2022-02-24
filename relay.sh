@@ -292,11 +292,14 @@ intelligent()
             enable_switch=$(sed -n ${conf_line}p ${conf} | awk '{print $4}')
 
             screen -ls | grep "relay_${conf_port}" > /dev/null
-            if [[ $? == "1" ]] && [[ ${enable_switch} == "1" ]];then
-                counter=$(expr ${counter} + 1)
-                local_port=${conf_port}
-                submitTask
-                echo -e "$(green) New task has been created -> relay_${local_port}"
+            if [[ $? != "0" ]];then
+                getIp ${remote_host}
+
+                if [[ ${enable_switch} == "1" ]] && [[ ${remote_target} != "" ]];then
+                    counter=$(expr ${counter} + 1)
+                    submitTask
+                    echo -e "$(green) New task has been created -> relay_${local_port}"
+                fi
             fi
         done
 
@@ -325,10 +328,9 @@ intelligent()
                     screen -S ${screen_id} -X quit
 
                     content="[${remote_host}] ${history_target}:${history_port} -> ${remote_target}:${remote_port}"
-                    echo -e "$(red) ${content}"
+                    echo -e "$(yellow) ${content}"
+                    #echo -e "$(yellow) relay_${local_port} has been terminated, waiting to be recreated."
                     echo "$(date "+%Y-%m-%d %H:%M:%S") ${content}" >> /root/.relay.terminate.log
-
-                    echo -e "$(yellow) relay_${local_port} has been terminated, waiting to be recreated."
                 fi
             fi
         done
